@@ -1,40 +1,6 @@
 from typing import Optional
 from datetime import datetime
-from dataclasses import dataclass
-
-"""{
-   "id": 786944,
-   "type": "message",
-   "date": "2024-11-17T21:22:41",
-   "date_unixtime": "1731874961",
-   "edited": "2024-11-17T21:22:52",
-   "edited_unixtime": "1731874972",
-   "from": "Airat",
-   "from_id": "user409474295",
-   "reply_to_message_id": 786940,
-   "text": "эх, а я вот в Мюнхене уже",
-   "text_entities": [
-    {
-     "type": "plain",
-     "text": "эх, а я вот в Мюнхене уже"
-    }
-   ],
-   "reactions": [
-     {
-      "type": "emoji",
-      "count": 1,
-      "emoji": "❤",
-      "recent": [
-       {
-        "from": "Alina",
-        "from_id": "user1263460953",
-        "date": "2024-11-17T21:22:52"
-       }
-      ]
-     }
-    ]
-  },"""
-
+from dataclasses import dataclass, field
 
 # @dataclass
 # class Reaction:
@@ -51,6 +17,7 @@ class Message:
     edited_dt: datetime | None = None
     reply_to_id: int | None = None
     reply_to: Optional["Message"] = None
+    other_text_entity_types: set[str] = field(default_factory=set)
     # reactions: list[Reaction] = field(default_factory=list)
 
     @classmethod
@@ -58,10 +25,27 @@ class Message:
         return cls(
             id=json_data["id"],
             from_=json_data["from"],
-            text=json_data["text"],
+            text=txt
+            if (txt := json_data["text"])
+            else "".join(te["text"] for te in json_data.get("text_entities", [])),
             dt=datetime.fromisoformat(json_data["date"]),
             edited_dt=datetime.fromisoformat(json_data["edited"])
             if json_data.get("edited")
             else None,
             reply_to_id=json_data.get("reply_to_message_id"),
+            other_text_entity_types={
+                tp
+                for te in json_data.get("text_entities", [])
+                if (tp := te["type"]) != "plain"
+            },
         )
+
+    def __str__(self) -> str:
+        return f"[{self.from_}] {self.text} ({self.dt:%d.%m.%Y %H:%M})"
+
+
+def reply_chain(message: Message) -> list[Message]:
+    res = [message]
+    if message.reply_to is None:
+        return res
+    return res + reply_chain(message.reply_to)
