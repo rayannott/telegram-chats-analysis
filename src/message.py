@@ -25,9 +25,11 @@ class Message:
         return cls(
             id=json_data["id"],
             from_=json_data["from"],
-            text=txt
-            if (txt := json_data["text"])
-            else "".join(te["text"] for te in json_data.get("text_entities", [])),
+            text=(
+                txt
+                if isinstance((txt := json_data["text"]), str)
+                else "".join(te["text"] for te in json_data.get("text_entities", []))
+            ),
             dt=datetime.fromisoformat(json_data["date"]),
             edited_dt=datetime.fromisoformat(json_data["edited"])
             if json_data.get("edited")

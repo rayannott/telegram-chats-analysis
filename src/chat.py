@@ -92,7 +92,7 @@ class Chat:
         n_messages_lst = [
             sum(
                 messages_include is None
-                or any(word in msg.text for word in messages_include)
+                or any(word.lower() in msg.text.lower() for word in messages_include)
                 for msg in day_msgs
             )
             for day_msgs in group.values()
@@ -121,9 +121,7 @@ class Chats:
     def __getitem__(self, key: str) -> Chat:
         return self.chats[key]
 
-    def fig_bar_chart(
-        self,
-    ) -> go.Figure:
+    def fig_message_length_statistics(self) -> go.Figure:
         """Plot grouped bar chart showing mean message length with error bars (±3 SE)."""
 
         chat_to_message_lengths = {
@@ -219,7 +217,10 @@ class Chats:
                     if msg.from_ == self.your_name
                     and (
                         messages_include is None
-                        or any(word in msg.text for word in messages_include)
+                        or any(
+                            word.lower() in msg.text.lower()
+                            for word in messages_include
+                        )
                     )
                 )
                 n_messages_other = sum(
@@ -228,7 +229,10 @@ class Chats:
                     if msg.from_ != self.your_name
                     and (
                         messages_include is None
-                        or any(word in msg.text for word in messages_include)
+                        or any(
+                            word.lower() in msg.text.lower()
+                            for word in messages_include
+                        )
                     )
                 )
                 chat_names.extend([chat.chat_with, chat.chat_with])
@@ -261,7 +265,7 @@ class Chats:
                     1
                     for msg in chat.messages
                     if messages_include is None
-                    or any(word in msg.text for word in messages_include)
+                    or any(word.lower() in msg.text.lower() for word in messages_include)
                 )
                 chat_names.append(chat.chat_with)
                 vals.append(
