@@ -141,8 +141,11 @@ class Chats:
         chats = [Chat(file) for file in chats_files]
         chats.sort(key=lambda chat: len(chat.messages), reverse=True)
         self.chats = {chat.id_name: chat for chat in chats}
-        assert all(chat.your_name == chats[0].your_name for chat in chats)
-        self.your_name = chats[0].your_name
+        your_names = [chat.your_name for chat in chats]
+        assert (
+            len(set(your_names)) == 1
+        ), f"Some chats have different 'your_name' values: {your_names}"
+        self.your_name = your_names[0]
         t1 = time.perf_counter()
         print(
             f"Loaded {len(chats)} chats for {self.your_name} in {t1 - t0:.2f} seconds"
@@ -206,10 +209,11 @@ class Chats:
                 xanchor="center",
                 x=0.5,
             ),
+            title="Median waiting time between messages when switching sender",
         )
 
         fig.update_xaxes(title_text="Chat")
-        fig.update_yaxes(title_text="Median waiting time (seconds)")
+        fig.update_yaxes(title_text="Median waiting time (sec)")
 
         return fig
 
@@ -278,10 +282,11 @@ class Chats:
                 xanchor="center",
                 x=0.5,
             ),
+            title="Mean message length with error bars (±3 SE)",
         )
 
         fig.update_xaxes(title_text="Chat")
-        fig.update_yaxes(title_text="Median message length ± 3 standard errors")
+        fig.update_yaxes(title_text="Message length")
 
         return fig
 
@@ -326,13 +331,10 @@ class Chats:
             barmode="group",
             template="plotly_dark",
             legend=dict(orientation="h", yanchor="top", y=1.1, xanchor="left", x=0.1),
+            title="Total number of reactions per chat and three most common reactions",
         )
-
         fig.update_xaxes(title_text="Chat")
         fig.update_yaxes(title_text="Number of reactions")
-        fig.update_layout(
-            title="Total number of reactions per chat and three most common reactions"
-        )
 
         return fig
 
@@ -350,7 +352,6 @@ class Chats:
         self,
         messages_include: str | list[str] | None = None,
         is_percentage: bool = False,
-        split_by_sender: bool = False,
     ) -> go.Figure:
         """Plot a bar chart with the number of messages (or percentage) in each chat.
         Optionally, include only messages that contain a specific string.
@@ -359,7 +360,6 @@ class Chats:
         vals = []
         if isinstance(messages_include, str):
             messages_include = [messages_include]
-        if split_by_sender:
             senders = []
             colors = []
             for chat in self:
@@ -371,8 +371,7 @@ class Chats:
                     and (
                         messages_include is None
                         or any(
-                            word.lower() in msg.text.lower()
-                            for word in messages_include
+                        word.lower() in msg.text.lower() for word in messages_include
                         )
                     )
                 )
@@ -383,8 +382,7 @@ class Chats:
                     and (
                         messages_include is None
                         or any(
-                            word.lower() in msg.text.lower()
-                            for word in messages_include
+                        word.lower() in msg.text.lower() for word in messages_include
                         )
                     )
                 )
@@ -411,34 +409,16 @@ class Chats:
                     textposition="auto",
                 )
             )
-        else:
-            for chat in self:
-                total_messages = len(chat.messages)
-                n_messages = sum(
-                    1
-                    for msg in chat.messages
-                    if messages_include is None
-                    or any(
-                        word.lower() in msg.text.lower() for word in messages_include
-                    )
-                )
-                chat_names.append(chat.chat_with)
-                vals.append(
-                    n_messages / total_messages if is_percentage else n_messages
-                )
-            fig = go.Figure(
-                go.Bar(
-                    x=chat_names,
-                    y=vals,
-                )
-            )
 
         fig.update_layout(
-            margin=dict(l=10, r=10, t=10, b=10),
+            margin=dict(l=10, r=10, t=30, b=10),
             template="plotly_dark",
-            yaxis_title=f"{'Number' if not is_percentage else 'Percentage'} of messages"
-            + (f" containing '{messages_include}'" if messages_include else ""),
-            barmode="group" if split_by_sender else "relative",
+            yaxis_title=f"{'Number' if not is_percentage else 'Percentage'} of messages",
+            barmode="group",
+            title=f"{'Number' if not is_percentage else 'Percentage'} of messages"
+            + (
+                " containing " + ", ".join(messages_include) if messages_include else ""
+            ),
         )
         return fig
 
@@ -453,11 +433,12 @@ class Chats:
             trace = chat.get_trace_messages_by(groupby_key, messages_include)
             fig.add_trace(trace)
         fig.update_layout(
-            margin=dict(l=10, r=10, t=10, b=10),
+            margin=dict(l=10, r=10, t=30, b=10),
             template="plotly_dark",
+            title=f"Number of messages by {groupby_key}",
         )
         fig.update_xaxes(title_text=groupby_key.capitalize())
-        fig.update_yaxes(title_text=f"Number of messages by {groupby_key}")
+        fig.update_yaxes(title_text="Messages")
         return fig
 
     def fig_other_message_types(self) -> go.Figure:
@@ -488,9 +469,9 @@ class Chats:
             margin=dict(l=10, r=10, t=30, b=10),
             template="plotly_dark",
             barmode="stack",
-            title="Stacked Bar Chart of Message Types per Chat",
-            xaxis_title="Chat Partner",
+            title="Message modifier types per chat",
+            xaxis_title="Chat",
             yaxis_title="Number of Messages",
-            legend_title="Message Type",
+            legend_title="Modifier Type",
         )
         return fig
