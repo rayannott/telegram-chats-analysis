@@ -1,6 +1,7 @@
 import json
 import datetime
 from typing import Literal, Callable
+from itertools import pairwise
 from pathlib import Path
 from collections import defaultdict, Counter
 
@@ -33,6 +34,8 @@ class Chat:
             ):
                 msg.reply_to = replied_to
         self.messages = list(messages_map.values())
+        self.participants = set(msg.from_ for msg in self.messages)
+        self.your_name = (self.participants - {self.chat_with}).pop()
 
     def __repr__(self) -> str:
         return f"Chat({self.chat_with}; {len(self.messages)} messages)"
@@ -75,6 +78,16 @@ class Chat:
                 msg_reply_chains.append(rc)
         return msg_reply_chains
 
+    def get_waiting_times(self) -> defaultdict[str, list[float]]:
+        waiting_times = defaultdict(list)
+
+        for m1, m2 in pairwise(self.messages):
+            if m1.from_ != m2.from_:
+                tot_sec = (m2.dt - m1.dt).total_seconds()
+                waiting_times[m1.from_].append(tot_sec)
+
+        return waiting_times
+
     def display_longest_reply_chain(self) -> None:
         msg_reply_chains = self.get_reply_chains()
         longest_chain = max(msg_reply_chains, key=len)
@@ -107,10 +120,15 @@ class Chat:
 
 
 class Chats:
-    def __init__(self, your_name: str, chats: list[Chat]):
-        self.your_name = your_name
+    def __init__(self, chats_directory: Path):
+        self.chats_dir = chats_directory
+        chats_files = list(self.chats_dir.glob("*.json"))
+        print(f"Found {len(chats_files)} chat files")
+        chats = [Chat(file) for file in chats_files]
         chats.sort(key=lambda chat: len(chat.messages), reverse=True)
         self.chats = {chat.id_name: chat for chat in chats}
+        assert all(chat.your_name == chats[0].your_name for chat in chats)
+        self.your_name = chats[0].your_name
 
     def __repr__(self) -> str:
         return f"Chats({len(self.chats)} chats)"
@@ -120,6 +138,61 @@ class Chats:
 
     def __getitem__(self, key: str) -> Chat:
         return self.chats[key]
+
+    def fig_waiting_times(self) -> go.Figure:
+        """Plot grouped bar chart showing mean waiting time between messages."""
+        chat_to_waiting_times = {
+            chat.chat_with: chat.get_waiting_times() for chat in self
+        }
+
+        fig = go.Figure()
+
+        chat_names = []
+        medians = ([], [])
+
+        for chat_name, waiting_times in chat_to_waiting_times.items():
+            for sender, times in waiting_times.items():
+                idx = 0 if sender == self.your_name else 1
+                times = np.array(times)
+                median = np.median(times)
+                if idx == 0:
+                    chat_names.append(chat_name)
+                medians[idx].append(median)
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Bar(
+                name="me",
+                x=chat_names,
+                y=medians[0],
+            )
+        )
+
+        fig.add_trace(
+            go.Bar(
+                name="them",
+                x=chat_names,
+                y=medians[1],
+            )
+        )
+
+        fig.update_layout(
+            barmode="group",
+            template="plotly_dark",
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=1.1,
+                xanchor="center",
+                x=0.5,
+            ),
+        )
+
+        fig.update_xaxes(title_text="Chat")
+        fig.update_yaxes(title_text="Median waiting time (seconds)")
+
+        return fig
 
     def fig_message_length_statistics(self) -> go.Figure:
         """Plot grouped bar chart showing mean message length with error bars (±3 SE)."""
@@ -265,7 +338,9 @@ class Chats:
                     1
                     for msg in chat.messages
                     if messages_include is None
-                    or any(word.lower() in msg.text.lower() for word in messages_include)
+                    or any(
+                        word.lower() in msg.text.lower() for word in messages_include
+                    )
                 )
                 chat_names.append(chat.chat_with)
                 vals.append(
