@@ -139,7 +139,7 @@ class Chats:
     def __getitem__(self, key: str) -> Chat:
         return self.chats[key]
 
-    def fig_waiting_times(self) -> go.Figure:
+    def fig_waiting_times(self, threshold_median: float = 100.0) -> go.Figure:
         """Plot grouped bar chart showing mean waiting time between messages."""
         chat_to_waiting_times = {
             chat.chat_with: chat.get_waiting_times() for chat in self
@@ -155,9 +155,11 @@ class Chats:
                 idx = 0 if sender == self.your_name else 1
                 times = np.array(times)
                 median = np.median(times)
-                if idx == 0:
+                median_ok = median < threshold_median
+                if idx == 0 and median_ok:
                     chat_names.append(chat_name)
-                medians[idx].append(median)
+                if median_ok:
+                    medians[idx].append(median)
 
         fig = go.Figure()
 
