@@ -1,7 +1,9 @@
 import json
 import datetime
+import time
 from typing import Literal, Callable
 from itertools import pairwise
+from statistics import median
 from pathlib import Path
 from collections import defaultdict, Counter
 
@@ -124,11 +126,16 @@ class Chats:
         self.chats_dir = chats_directory
         chats_files = list(self.chats_dir.glob("*.json"))
         print(f"Found {len(chats_files)} chat files")
+        t0 = time.perf_counter()
         chats = [Chat(file) for file in chats_files]
         chats.sort(key=lambda chat: len(chat.messages), reverse=True)
         self.chats = {chat.id_name: chat for chat in chats}
         assert all(chat.your_name == chats[0].your_name for chat in chats)
         self.your_name = chats[0].your_name
+        t1 = time.perf_counter()
+        print(
+            f"Loaded {len(chats)} chats for {self.your_name} in {t1 - t0:.2f} seconds"
+        )
 
     def __repr__(self) -> str:
         return f"Chats({len(self.chats)} chats)"
@@ -153,13 +160,12 @@ class Chats:
         for chat_name, waiting_times in chat_to_waiting_times.items():
             for sender, times in waiting_times.items():
                 idx = 0 if sender == self.your_name else 1
-                times = np.array(times)
-                median = np.median(times)
-                median_ok = median < threshold_median
+                mdn = median(times)
+                median_ok = mdn < threshold_median
                 if idx == 0 and median_ok:
                     chat_names.append(chat_name)
                 if median_ok:
-                    medians[idx].append(median)
+                    medians[idx].append(mdn)
 
         fig = go.Figure()
 
