@@ -233,6 +233,36 @@ class Chats:
 
         return fig
 
+    def fig_messages_by_time_of_day(self, normalize: bool = False) -> go.Figure:
+        """Plot a line chart with the number of messages by time of day."""
+        by_time_of_day_by_chat = defaultdict(lambda: defaultdict(int))
+        for chat_id, chat in self.chats.items():
+            for message in chat.messages:
+                by_time_of_day_by_chat[chat_id][message.dt.hour] += 1
+
+        fig = go.Figure()
+        for chat_id, by_time_of_day in by_time_of_day_by_chat.items():
+            times_, messages_ = zip(*sorted(by_time_of_day.items()))
+            if normalize:
+                tot_msgs = sum(messages_)
+                messages_ = [val / tot_msgs for val in messages_]
+            fig.add_trace(
+                go.Scatter(
+                    x=times_,
+                    y=messages_,
+                    mode="lines+markers",
+                    line_shape="spline",
+                    name=self[chat_id].chat_with,
+                )
+            )
+        fig.update_layout(
+            title="Messages by time of day" + (" (normalized)" if normalize else ""),
+            xaxis_title="Hour",
+            yaxis_title="Number of messages",
+            template="plotly_dark",
+        )
+        return fig
+
     def fig_message_length_statistics(self) -> go.Figure:
         """Plot grouped bar chart showing mean message length with error bars (±3 SE)."""
 
@@ -362,7 +392,7 @@ class Chats:
     {me_emojis} (you) vs {them_emojis} (them) (total reactions: {sum(me_cnt.values())} vs {sum(them_cnt.values())})"""
             )
 
-    def fig_bar(
+    def fig_total_number_of_messages(
         self,
         messages_include: str | list[str] | None = None,
         is_percentage: bool = False,
@@ -431,12 +461,14 @@ class Chats:
             barmode="group",
             title=f"{'Number' if not is_percentage else 'Percentage'} of messages"
             + (
-                " containing " + ", ".join(messages_include) if messages_include else ""
+                (" containing " + ", ".join(messages_include))
+                if messages_include and any(messages_include)
+                else ""
             ),
         )
         return fig
 
-    def fig_messages_by(
+    def fig_messages_vs_time(
         self, groupby_key: GroupbyKeys, messages_include: str | list[str] | None = None
     ) -> go.Figure:
         """Plot a line chart with the number of messages by day."""
