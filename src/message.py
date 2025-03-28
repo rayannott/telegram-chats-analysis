@@ -2,10 +2,25 @@ from typing import Optional
 from datetime import datetime
 from dataclasses import dataclass, field
 
-# @dataclass
-# class Reaction:
-#     emoji: str
-#     count: int
+
+@dataclass
+class Reaction:
+    emoji: str
+    from_when: list[tuple[str, datetime]]
+
+    @classmethod
+    def from_dict(cls, reaction_dict: dict) -> "Reaction":
+        return Reaction(
+            emoji=reaction_dict["emoji"],
+            from_when=[
+                (r["from"], datetime.fromisoformat(r["date"]))
+                for r in reaction_dict.get("recent", [])
+            ],
+        )
+
+
+def parse_reactions(reactions: list[dict]) -> list[Reaction]:
+    return [Reaction.from_dict(r) for r in reactions if r.get("type") == "emoji"]
 
 
 @dataclass
@@ -18,7 +33,7 @@ class Message:
     reply_to_id: int | None = None
     reply_to: Optional["Message"] = None
     other_text_entity_types: set[str] = field(default_factory=set)
-    # reactions: list[Reaction] = field(default_factory=list)
+    reactions: list[Reaction] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, json_data: dict) -> "Message":
@@ -40,6 +55,7 @@ class Message:
                 for te in json_data.get("text_entities", [])
                 if (tp := te["type"]) != "plain"
             },
+            reactions=parse_reactions(json_data.get("reactions", [])),
         )
 
     def __str__(self) -> str:
