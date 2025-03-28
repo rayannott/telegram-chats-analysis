@@ -2,6 +2,7 @@ import json
 import datetime
 import time
 import warnings
+import multiprocessing
 from typing import Literal, Callable
 from itertools import pairwise
 from statistics import median
@@ -154,11 +155,25 @@ class Chat:
 
 
 class Chats:
-    def __init__(self, chats_directory: Path):
+    @staticmethod
+    def _load_chats(from_files: list[Path]) -> list[Chat]:
+        return [Chat(file) for file in from_files]
+
+    @staticmethod
+    def _load_chats_multi(from_files: list[Path]) -> list[Chat]:
+        with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
+            chats = pool.map(Chat, from_files)
+        return chats
+
+    def __init__(self, chats_directory: Path, use_multiproc: bool = True):
         self.chats_dir = chats_directory
         chats_files = list(self.chats_dir.glob("*.json"))
         print(f"Found {len(chats_files)} chat files")
-        chats = [Chat(file) for file in chats_files]
+        chats = (
+            self._load_chats_multi(chats_files)
+            if use_multiproc
+            else self._load_chats(chats_files)
+        )
         chats.sort(key=lambda chat: len(chat.messages), reverse=True)
         self.chats = {chat.id_name: chat for chat in chats}
         your_names = [chat.you for chat in chats]
