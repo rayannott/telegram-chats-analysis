@@ -1,6 +1,7 @@
 import json
 import datetime
 import time
+import warnings
 from typing import Literal, Callable
 from itertools import pairwise
 from statistics import median
@@ -17,16 +18,11 @@ GroupbyKeys = Literal["day", "week", "month"]
 
 
 class Chat:
-    def __init__(self, exported_file: Path):
-        self.id_name = exported_file.stem
-        with exported_file.open(encoding="utf-8") as f:
-            self.data = json.load(f)
-        self.chat_with = self.data["name"]
-        if self.data["type"] != "personal_chat":
-            raise NotImplementedError("Only personal chats are supported")
+    @staticmethod
+    def _build_messages(data: dict) -> list[Message]:
         messages_map = {
             (this_msg := Message.from_dict(msg)).id: this_msg
-            for msg in self.data["messages"]
+            for msg in data["messages"]
             if msg["type"] == "message"
         }
         for msg in messages_map.values():
@@ -35,9 +31,34 @@ class Chat:
                 and (replied_to := messages_map.get(msg.reply_to_id)) is not None
             ):
                 msg.reply_to = replied_to
-        self.messages = list(messages_map.values())
-        self.participants = set(msg.from_ for msg in self.messages)
-        self.your_name = (self.participants - {self.chat_with}).pop()
+        return list(messages_map.values())
+
+    def __init__(self, exported_file: Path):
+        t0 = time.perf_counter()
+        self.id_name = exported_file.stem
+        with exported_file.open(encoding="utf-8") as f:
+            data = json.load(f)
+
+        participant_id_map = {
+            _from_id: msg.get("from")
+            for msg in data["messages"]
+            if (_from_id := msg.get("from_id")) is not None
+        }
+        if data["type"] != "personal_chat" or len(participant_id_map) != 2:
+            raise NotImplementedError(
+                f"Only personal chats are supported ({list(participant_id_map.keys())})"
+            )
+        chat_with_user_id: str = f"user{data['id']}"
+        self.chat_with: str = data["name"]
+        if self.chat_with != (upd_name := participant_id_map[chat_with_user_id]):
+            warnings.warn(f"Chat name mismatch: {self.chat_with} vs {upd_name}")
+            self.chat_with = upd_name
+
+        self.messages = self._build_messages(data)
+        self.you: str = next(
+            msg.from_ for msg in self.messages if msg.from_ != self.chat_with
+        )
+        print(f"[{time.perf_counter() - t0:.2f}s] {self}")
 
     def __repr__(self) -> str:
         return f"Chat({self.chat_with}; {len(self.messages)} messages)"
@@ -101,7 +122,7 @@ class Chat:
         for m in self.messages:
             for react in m.reactions:
                 for reactor, _ in react.from_when:
-                    if reactor == self.your_name:
+                    if reactor == self.you:
                         me += react.emoji
                     else:
                         them += react.emoji
@@ -137,19 +158,14 @@ class Chats:
         self.chats_dir = chats_directory
         chats_files = list(self.chats_dir.glob("*.json"))
         print(f"Found {len(chats_files)} chat files")
-        t0 = time.perf_counter()
         chats = [Chat(file) for file in chats_files]
         chats.sort(key=lambda chat: len(chat.messages), reverse=True)
         self.chats = {chat.id_name: chat for chat in chats}
-        your_names = [chat.your_name for chat in chats]
+        your_names = [chat.you for chat in chats]
         assert (
             len(set(your_names)) == 1
         ), f"Some chats have different 'your_name' values: {your_names}"
         self.your_name = your_names[0]
-        t1 = time.perf_counter()
-        print(
-            f"Loaded {len(chats)} chats for {self.your_name} in {t1 - t0:.2f} seconds"
-        )
 
     def __repr__(self) -> str:
         return f"Chats({len(self.chats)} chats)"
@@ -241,8 +257,6 @@ class Chats:
                     chat_names.append(chat_name)
                 medians[idx].append(median)
                 se_values[idx].append(se)
-
-        print(chat_names, medians, se_values)
 
         fig = go.Figure()
 
@@ -360,55 +374,55 @@ class Chats:
         vals = []
         if isinstance(messages_include, str):
             messages_include = [messages_include]
-            senders = []
-            colors = []
-            for chat in self:
-                total_messages = len(chat.messages)
-                n_messages_you = sum(
-                    1
-                    for msg in chat.messages
-                    if msg.from_ == self.your_name
-                    and (
-                        messages_include is None
-                        or any(
+        senders = []
+        colors = []
+        for chat in self:
+            total_messages = len(chat.messages)
+            n_messages_you = sum(
+                1
+                for msg in chat.messages
+                if msg.from_ == self.your_name
+                and (
+                    messages_include is None
+                    or any(
                         word.lower() in msg.text.lower() for word in messages_include
-                        )
                     )
-                )
-                n_messages_other = sum(
-                    1
-                    for msg in chat.messages
-                    if msg.from_ != self.your_name
-                    and (
-                        messages_include is None
-                        or any(
-                        word.lower() in msg.text.lower() for word in messages_include
-                        )
-                    )
-                )
-                chat_names.extend([chat.chat_with, chat.chat_with])
-                senders.extend(["me", ""])
-                colors.extend(["#1f77b4", "#ff7f0e"])
-                vals.extend(
-                    [
-                        n_messages_you / total_messages
-                        if is_percentage
-                        else n_messages_you,
-                        n_messages_other / total_messages
-                        if is_percentage
-                        else n_messages_other,
-                    ]
-                )
-            fig = go.Figure(
-                go.Bar(
-                    x=chat_names,
-                    y=vals,
-                    marker_color=colors,
-                    name="Messages per sender",
-                    text=senders,
-                    textposition="auto",
                 )
             )
+            n_messages_other = sum(
+                1
+                for msg in chat.messages
+                if msg.from_ != self.your_name
+                and (
+                    messages_include is None
+                    or any(
+                        word.lower() in msg.text.lower() for word in messages_include
+                    )
+                )
+            )
+            chat_names.extend([chat.chat_with, chat.chat_with])
+            senders.extend(["me", ""])
+            colors.extend(["#1f77b4", "#ff7f0e"])
+            vals.extend(
+                [
+                    n_messages_you / total_messages
+                    if is_percentage
+                    else n_messages_you,
+                    n_messages_other / total_messages
+                    if is_percentage
+                    else n_messages_other,
+                ]
+            )
+        fig = go.Figure(
+            go.Bar(
+                x=chat_names,
+                y=vals,
+                marker_color=colors,
+                name="Messages per sender",
+                text=senders,
+                textposition="auto",
+            )
+        )
 
         fig.update_layout(
             margin=dict(l=10, r=10, t=30, b=10),
