@@ -96,6 +96,17 @@ class Chat:
         for i, msg in enumerate(reversed(longest_chain)):
             print("  " * i, msg)
 
+    def get_reaction_counters(self) -> tuple[Counter[str], Counter[str]]:
+        me, them = "", ""
+        for m in self.messages:
+            for react in m.reactions:
+                for reactor, _ in react.from_when:
+                    if reactor == self.your_name:
+                        me += react.emoji
+                    else:
+                        them += react.emoji
+        return Counter(me), Counter(them)
+
     def get_trace_messages_by(
         self, groupby_key: GroupbyKeys, messages_include
     ) -> go.Scatter:
@@ -273,6 +284,67 @@ class Chats:
         fig.update_yaxes(title_text="Median message length ± 3 standard errors")
 
         return fig
+
+    def fig_total_and_most_common_reactions(self) -> go.Figure:
+        chat_names = []
+        n_reactions = ([], [])
+        most_common = ([], [])
+
+        for chat in self:
+            me_cnt, them_cnt = chat.get_reaction_counters()
+            chat_names.append(chat.chat_with)
+            n_reactions[0].append(sum(me_cnt.values()))
+            n_reactions[1].append(sum(them_cnt.values()))
+            me_emojis = "".join(emj for emj, _ in me_cnt.most_common(3))
+            them_emojis = "".join(emj for emj, _ in them_cnt.most_common(3))
+            most_common[0].append(me_emojis)
+            most_common[1].append(them_emojis)
+
+        fig = go.Figure()
+
+        fig.add_trace(
+            go.Bar(
+                name="me",
+                x=chat_names,
+                y=n_reactions[0],
+                text=most_common[0],
+                textposition="outside",
+            )
+        )
+
+        fig.add_trace(
+            go.Bar(
+                name="them",
+                x=chat_names,
+                y=n_reactions[1],
+                text=most_common[1],
+                textposition="outside",
+            )
+        )
+
+        fig.update_layout(
+            barmode="group",
+            template="plotly_dark",
+            legend=dict(orientation="h", yanchor="top", y=1.1, xanchor="left", x=0.1),
+        )
+
+        fig.update_xaxes(title_text="Chat")
+        fig.update_yaxes(title_text="Number of reactions")
+        fig.update_layout(
+            title="Total number of reactions per chat and three most common reactions"
+        )
+
+        return fig
+
+    def display_most_common_reactions(self, n_most_common: int = 5) -> None:
+        for chat in self:
+            me_cnt, them_cnt = chat.get_reaction_counters()
+            me_emojis = "".join(emj for emj, _ in me_cnt.most_common(n_most_common))
+            them_emojis = "".join(emj for emj, _ in them_cnt.most_common(n_most_common))
+            print(
+                f"""{chat.chat_with}: 
+    {me_emojis} (you) vs {them_emojis} (them) (total reactions: {sum(me_cnt.values())} vs {sum(them_cnt.values())})"""
+            )
 
     def fig_bar(
         self,
